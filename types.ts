@@ -12,8 +12,13 @@ export interface ScheduleEntry {
   arrivalStopLocation: string;
 }
 
-export interface FormData {
-  lastName: string;
+export interface Student {
+  id: string;
   firstName: string;
+  lastName: string;
+}
+
+export interface FormData {
+  students: Student[];
   schedule: ScheduleEntry[];
 }

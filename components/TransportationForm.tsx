@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
-import type { FormData, ScheduleEntry } from '../types';
+import type { FormData, ScheduleEntry, Student } from '../types';
 import { DownloadIcon, PlusIcon, TrashIcon } from './icons';
 
 const SCHOOL_WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"];
 
 const TransportationForm: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({
-    firstName: '',
-    lastName: '',
+    students: [{ id: crypto.randomUUID(), firstName: '', lastName: '' }],
     schedule: [{
       id: crypto.randomUUID(),
       day: 'Montag',
@@ -21,11 +20,30 @@ const TransportationForm: React.FC = () => {
       arrivalStopLocation: ''
     }],
   });
+  const [locations, setLocations] = useState<string[]>([]);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStudentChange = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    const newStudents = formData.students.map(student => 
+      student.id === id ? { ...student, [name]: value } : student
+    );
+    setFormData(prev => ({ ...prev, students: newStudents }));
+  };
+
+  const handleAddStudent = () => {
+    setFormData(prev => ({
+      ...prev,
+      students: [...prev.students, { id: crypto.randomUUID(), firstName: '', lastName: '' }]
+    }));
+  };
+
+  const handleRemoveStudent = (idToRemove: string) => {
+    if (formData.students.length <= 1) return;
+    setFormData(prev => ({
+      ...prev,
+      students: prev.students.filter(student => student.id !== idToRemove)
+    }));
   };
 
   const handleScheduleChange = (index: number, e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -33,6 +51,13 @@ const TransportationForm: React.FC = () => {
     const newSchedule = [...formData.schedule];
     newSchedule[index] = { ...newSchedule[index], [name]: value };
     setFormData(prev => ({ ...prev, schedule: newSchedule }));
+  };
+
+  const handleLocationBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const newLocation = e.target.value.trim();
+    if (newLocation && !locations.includes(newLocation)) {
+      setLocations(prev => [...prev, newLocation].sort());
+    }
   };
 
   const handleAddEntry = () => {
@@ -58,7 +83,7 @@ const TransportationForm: React.FC = () => {
   };
 
   const handleRemoveEntry = (idToRemove: string) => {
-    if (formData.schedule.length <= 1) return; // Keep at least one line
+    if (formData.schedule.length <= 1) return;
     setFormData(prev => ({
       ...prev,
       schedule: prev.schedule.filter(entry => entry.id !== idToRemove)
@@ -79,8 +104,15 @@ const TransportationForm: React.FC = () => {
                 throw new Error("Das jspdf-autotable-Plugin konnte nicht geladen werden.");
             }
 
-            const studentName = `${formData.firstName.trim() || 'N/A'} ${formData.lastName.trim() || 'N/A'}`;
-            const fileName = `Antrag_${formData.lastName.trim() || 'Name'}_${formData.firstName.trim() || 'Vorname'}.pdf`;
+            const studentNames = formData.students
+                .map(s => `${s.firstName.trim()} ${s.lastName.trim()}`)
+                .filter(name => name.trim() !== '')
+                .join(', ') || 'N/A';
+
+            const firstStudent = formData.students[0] || { lastName: 'Name', firstName: 'Vorname' };
+            const fileName = formData.students.length > 1
+                ? `Antrag_${firstStudent.lastName.trim() || 'Gruppe'}_und_weitere.pdf`
+                : `Antrag_${firstStudent.lastName.trim() || 'Name'}_${firstStudent.firstName.trim() || 'Vorname'}.pdf`;
 
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(18);
@@ -88,7 +120,7 @@ const TransportationForm: React.FC = () => {
 
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(12);
-            doc.text(`Name des Schülers / der Schülerin: ${studentName}`, 14, 40);
+            doc.text(`Antrag für: ${studentNames}`, 14, 40);
 
             const head = [['Tag', 'Abfahrt Haltestelle', 'Ankunft Schule', 'Abfahrt Schule', 'Ankunft Haltestelle']];
             const body: any[] = [];
@@ -151,42 +183,66 @@ const TransportationForm: React.FC = () => {
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 sm:p-8">
+      <datalist id="locations-list">
+        {locations.map(loc => <option key={loc} value={loc} />)}
+      </datalist>
       <div className="mb-8 border-b pb-4">
         <h2 className="text-2xl font-bold">Antrag auf Schülerbeförderung</h2>
       </div>
 
       <section className="mb-8">
         <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">Angaben zum Schüler / zur Schülerin</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label htmlFor="firstName" className="block text-sm font-medium text-slate-600 mb-1">Vorname</label>
-            <input
-              type="text"
-              id="firstName"
-              name="firstName"
-              value={formData.firstName}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="Max"
-            />
-          </div>
-          <div>
-            <label htmlFor="lastName" className="block text-sm font-medium text-slate-600 mb-1">Name</label>
-            <input
-              type="text"
-              id="lastName"
-              name="lastName"
-              value={formData.lastName}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-              placeholder="Mustermann"
-            />
-          </div>
+        <div className="space-y-4">
+            {formData.students.map((student) => (
+              <div key={student.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-x-6 gap-y-2 items-end">
+                <div>
+                  <label htmlFor={`firstName-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Vorname</label>
+                  <input
+                    type="text"
+                    id={`firstName-${student.id}`}
+                    name="firstName"
+                    value={student.firstName}
+                    onChange={(e) => handleStudentChange(student.id, e)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Max"
+                  />
+                </div>
+                <div>
+                  <label htmlFor={`lastName-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Name</label>
+                  <input
+                    type="text"
+                    id={`lastName-${student.id}`}
+                    name="lastName"
+                    value={student.lastName}
+                    onChange={(e) => handleStudentChange(student.id, e)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                    placeholder="Mustermann"
+                  />
+                </div>
+                <button
+                    type="button"
+                    onClick={() => handleRemoveStudent(student.id)}
+                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-100 rounded-full transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                    aria-label="Schüler entfernen"
+                    disabled={formData.students.length <= 1}
+                >
+                    <TrashIcon />
+                </button>
+              </div>
+            ))}
+             <button
+                type="button"
+                onClick={handleAddStudent}
+                className="mt-2 flex items-center justify-center px-3 py-1.5 border border-dashed border-slate-400 text-xs font-medium rounded-md shadow-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                >
+                <PlusIcon />
+                Weiteren Schüler hinzufügen
+            </button>
         </div>
       </section>
 
       <section>
-        <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">Benötigte Fahrzeiten</h3>
+        <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">Benötigte Fahrzeiten (gemeinsam für alle oben genannten Schüler)</h3>
         <div className="space-y-6">
           {formData.schedule.map((entry, index) => (
             <div key={entry.id} className="p-4 border rounded-md relative bg-slate-50/50">
@@ -236,6 +292,8 @@ const TransportationForm: React.FC = () => {
                                     name="departureStopLocation"
                                     value={entry.departureStopLocation}
                                     onChange={(e) => handleScheduleChange(index, e)}
+                                    onBlur={handleLocationBlur}
+                                    list="locations-list"
                                     className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                     placeholder="Ort der Haltestelle"
                                 />
@@ -256,6 +314,8 @@ const TransportationForm: React.FC = () => {
                                     name="arrivalSchoolLocation"
                                     value={entry.arrivalSchoolLocation}
                                     onChange={(e) => handleScheduleChange(index, e)}
+                                    onBlur={handleLocationBlur}
+                                    list="locations-list"
                                     className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                     placeholder="Ort der Schule"
                                 />
@@ -280,6 +340,8 @@ const TransportationForm: React.FC = () => {
                                     name="departureSchoolLocation"
                                     value={entry.departureSchoolLocation}
                                     onChange={(e) => handleScheduleChange(index, e)}
+                                    onBlur={handleLocationBlur}
+                                    list="locations-list"
                                     className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                     placeholder="Ort der Schule"
                                 />
@@ -300,6 +362,8 @@ const TransportationForm: React.FC = () => {
                                     name="arrivalStopLocation"
                                     value={entry.arrivalStopLocation}
                                     onChange={(e) => handleScheduleChange(index, e)}
+                                    onBlur={handleLocationBlur}
+                                    list="locations-list"
                                     className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
                                     placeholder="Ort der Haltestelle"
                                 />
