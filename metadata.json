@@ -1,0 +1,5 @@
+{
+  "name": "Schulbusantrag",
+  "description": "Ein Formular zur Erfassung der Transportbedürfnisse von Schülerinnen und Schülern, das als PDF ausgedruckt werden kann.",
+  "requestFramePermissions": []
+}
