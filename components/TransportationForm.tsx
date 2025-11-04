@@ -1,27 +1,71 @@
 import React, { useState } from 'react';
 import type { FormData, ScheduleEntry, Student } from '../types';
-import { DownloadIcon, PlusIcon, TrashIcon } from './icons';
+import { DownloadIcon, PlusIcon, TrashIcon, ClockIcon } from './icons';
 
 const SCHOOL_WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag"];
 
+const initialScheduleEntry: Omit<ScheduleEntry, 'id' | 'day'> = {
+  departureStopMorning: '',
+  departureStopLocationMorning: '',
+  arrivalSchoolMorning: '',
+  arrivalSchoolLocationMorning: '',
+  departureSchoolMorning: '',
+  departureSchoolLocationMorning: '',
+  arrivalStopMorning: '',
+  arrivalStopLocationMorning: '',
+  departureStopAfternoon: '',
+  departureStopLocationAfternoon: '',
+  arrivalSchoolAfternoon: '',
+  arrivalSchoolLocationAfternoon: '',
+  departureSchoolAfternoon: '',
+  departureSchoolLocationAfternoon: '',
+  arrivalStopAfternoon: '',
+  arrivalStopLocationAfternoon: ''
+};
+
 const TransportationForm: React.FC = () => {
   const [formData, setFormData] = useState<FormData>({
-    students: [{ id: crypto.randomUUID(), firstName: '', lastName: '' }],
+    requestType: 'group',
+    students: [{ id: crypto.randomUUID(), firstName: '', lastName: '', street: '', zipCode: '', city: '' }],
     schedule: [{
       id: crypto.randomUUID(),
       day: 'Montag',
-      departureStop: '',
-      departureStopLocation: '',
-      arrivalSchool: '',
-      arrivalSchoolLocation: '',
-      departureSchool: '',
-      departureSchoolLocation: '',
-      arrivalStop: '',
-      arrivalStopLocation: ''
+      ...initialScheduleEntry,
     }],
+    groupNames: [''],
+    studentCount: '',
+    responsibleTeacher: '',
   });
   const [locations, setLocations] = useState<string[]>([]);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  
+  const handleRequestTypeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value } = e.target;
+    setFormData(prev => ({ ...prev, requestType: value as 'single' | 'group' }));
+  };
+  
+  const handleGroupDataChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleGroupNameChange = (index: number, value: string) => {
+    const newGroupNames = [...formData.groupNames];
+    newGroupNames[index] = value;
+    setFormData(prev => ({ ...prev, groupNames: newGroupNames }));
+  };
+
+  const handleAddGroupName = () => {
+    setFormData(prev => ({ ...prev, groupNames: [...prev.groupNames, ''] }));
+  };
+
+  const handleRemoveGroupName = (indexToRemove: number) => {
+    if (formData.groupNames.length <= 1) return;
+    setFormData(prev => ({
+      ...prev,
+      groupNames: formData.groupNames.filter((_, index) => index !== indexToRemove)
+    }));
+  };
 
   const handleStudentChange = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -34,7 +78,7 @@ const TransportationForm: React.FC = () => {
   const handleAddStudent = () => {
     setFormData(prev => ({
       ...prev,
-      students: [...prev.students, { id: crypto.randomUUID(), firstName: '', lastName: '' }]
+      students: [...prev.students, { id: crypto.randomUUID(), firstName: '', lastName: '', street: '', zipCode: '', city: '' }]
     }));
   };
 
@@ -49,7 +93,7 @@ const TransportationForm: React.FC = () => {
   const handleScheduleChange = (index: number, e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     const newSchedule = [...formData.schedule];
-    newSchedule[index] = { ...newSchedule[index], [name]: value };
+    newSchedule[index] = { ...newSchedule[index], [name]: value as string };
     setFormData(prev => ({ ...prev, schedule: newSchedule }));
   };
 
@@ -69,14 +113,7 @@ const TransportationForm: React.FC = () => {
         {
           id: crypto.randomUUID(),
           day: availableDays[0] || 'Montag',
-          departureStop: '',
-          departureStopLocation: '',
-          arrivalSchool: '',
-          arrivalSchoolLocation: '',
-          departureSchool: '',
-          departureSchoolLocation: '',
-          arrivalStop: '',
-          arrivalStopLocation: ''
+          ...initialScheduleEntry
         }
       ]
     }));
@@ -103,71 +140,172 @@ const TransportationForm: React.FC = () => {
             if (typeof (doc as any).autoTable !== 'function') {
                 throw new Error("Das jspdf-autotable-Plugin konnte nicht geladen werden.");
             }
+            
+            let fileName = 'Antrag.pdf';
+            if (formData.requestType === 'group') {
+                const validGroupNames = formData.groupNames.map(n => n.trim()).filter(Boolean);
+                const pdfGroupName = validGroupNames.length > 1 
+                    ? `${validGroupNames[0]}_und_weitere` 
+                    : validGroupNames[0] || 'Unbenannt';
+                fileName = `Antrag_Gruppe_${pdfGroupName.replace(/\s+/g, '_')}.pdf`;
+            } else {
+                const firstStudent = formData.students[0] || { lastName: 'Name', firstName: 'Vorname' };
+                fileName = formData.students.length > 1
+                    ? `Antrag_${firstStudent.lastName.trim() || 'Gruppe'}_und_weitere.pdf`
+                    : `Antrag_${firstStudent.lastName.trim() || 'Name'}_${firstStudent.firstName.trim() || 'Vorname'}.pdf`;
+            }
 
-            const studentNames = formData.students
-                .map(s => `${s.firstName.trim()} ${s.lastName.trim()}`)
-                .filter(name => name.trim() !== '')
-                .join(', ') || 'N/A';
-
-            const firstStudent = formData.students[0] || { lastName: 'Name', firstName: 'Vorname' };
-            const fileName = formData.students.length > 1
-                ? `Antrag_${firstStudent.lastName.trim() || 'Gruppe'}_und_weitere.pdf`
-                : `Antrag_${firstStudent.lastName.trim() || 'Name'}_${firstStudent.firstName.trim() || 'Vorname'}.pdf`;
 
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(18);
             doc.text("Schülerbeförderungsantrag", doc.internal.pageSize.getWidth() / 2, 22, { align: 'center' });
 
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(12);
-            doc.text(`Antrag für: ${studentNames}`, 14, 40);
-
-            const head = [['Tag', 'Abfahrt Haltestelle', 'Ankunft Schule', 'Abfahrt Schule', 'Ankunft Haltestelle']];
-            const body: any[] = [];
-
-            formData.schedule.forEach(entry => {
-                const timeRow = [
-                    { content: entry.day, rowSpan: 2, styles: { valign: 'middle', fontStyle: 'bold' } },
-                    { content: entry.departureStop || '-' },
-                    { content: entry.arrivalSchool || '-' },
-                    { content: entry.departureSchool || '-' },
-                    { content: entry.arrivalStop || '-' }
-                ];
-                const locationRow = [
-                    { content: `(${entry.departureStopLocation || 'N/A'})` },
-                    { content: `(${entry.arrivalSchoolLocation || 'N/A'})` },
-                    { content: `(${entry.departureSchoolLocation || 'N/A'})` },
-                    { content: `(${entry.arrivalStopLocation || 'N/A'})` }
-                ];
-                body.push(timeRow);
-                body.push(locationRow);
-            });
-
-            (doc as any).autoTable({
-                head,
-                body,
-                startY: 50,
-                theme: 'striped',
-                headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold', halign: 'center' },
-                styles: { cellPadding: 2, fontSize: 9, valign: 'middle' },
-                columnStyles: { 
-                    0: { halign: 'left' },
-                    1: { halign: 'center' },
-                    2: { halign: 'center' },
-                    3: { halign: 'center' },
-                    4: { halign: 'center' },
-                },
-                didParseCell: function (data: any) {
-                    if (data.row.section === 'body') {
-                        if (data.row.index % 2 !== 0) {
-                            data.cell.styles.textColor = [100, 116, 139];
-                            data.cell.styles.fontSize = 8;
-                        } else {
-                            data.cell.styles.fontStyle = 'bold';
-                        }
+            let currentY = 40;
+            
+            if (formData.requestType === 'single') {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(14);
+                doc.text("Angaben zu den Schülern", 14, currentY);
+                currentY += 8;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+    
+                formData.students.forEach((student, index) => {
+                  const name = `${student.firstName.trim()} ${student.lastName.trim()}`.trim();
+                  const addressLine1 = student.street.trim();
+                  const addressLine2 = `${student.zipCode.trim()} ${student.city.trim()}`.trim();
+                  
+                  if (name || addressLine1 || addressLine2) {
+                    if (index > 0) {
+                        currentY += 5; // Extra space between students
                     }
-                },
-            });
+                    doc.setFont('helvetica', 'bold');
+                    doc.text(name || 'Kein Name angegeben', 14, currentY);
+                    currentY += 5;
+                    
+                    doc.setFont('helvetica', 'normal');
+                    if (addressLine1) {
+                        doc.text(addressLine1, 14, currentY);
+                        currentY += 5;
+                    }
+                    if (addressLine2) {
+                        doc.text(addressLine2, 14, currentY);
+                        currentY += 5;
+                    }
+                  }
+                });
+            } else { // 'group'
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(14);
+                doc.text("Angaben zur Gruppe", 14, currentY);
+                currentY += 8;
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(10);
+                
+                const groupNameText = formData.groupNames.map(n => n.trim()).filter(Boolean).join(', ') || 'Kein Gruppenname angegeben';
+
+                doc.setFont('helvetica', 'bold');
+                doc.text(groupNameText, 14, currentY, { maxWidth: doc.internal.pageSize.getWidth() - 28 });
+                const groupNameLines = doc.splitTextToSize(groupNameText, doc.internal.pageSize.getWidth() - 28);
+                currentY += 5 * groupNameLines.length;
+    
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Anzahl der Schüler: ${formData.studentCount.trim() || 'N/A'}`, 14, currentY);
+                currentY += 5;
+                doc.text(`Verantwortliche Lehrperson: ${formData.responsibleTeacher.trim() || 'N/A'}`, 14, currentY);
+                currentY += 5;
+            }
+
+
+            const tableStartY = currentY + 10;
+            
+            if (formData.requestType === 'single') {
+                const head = [['Tag', 'Abfahrt Haltestelle', 'Ankunft Schule', 'Abfahrt Schule', 'Ankunft Haltestelle']];
+                const body: any[] = [];
+                 formData.schedule.forEach(entry => {
+                    const morningTimeRow = [
+                        { content: entry.day, rowSpan: 4, styles: { valign: 'middle', fontStyle: 'bold' } },
+                        { content: entry.departureStopMorning || '-' },
+                        { content: entry.arrivalSchoolMorning || '-' },
+                        { content: entry.departureSchoolMorning || '-' },
+                        { content: entry.arrivalStopMorning || '-' }
+                    ];
+                    const morningLocationRow = [
+                        { content: `(${entry.departureStopLocationMorning || 'Vormittag'})` },
+                        { content: `(${entry.arrivalSchoolLocationMorning || 'N/A'})` },
+                        { content: `(${entry.departureSchoolLocationMorning || 'N/A'})` },
+                        { content: `(${entry.arrivalStopLocationMorning || 'N/A'})` }
+                    ];
+                    const afternoonTimeRow = [
+                        { content: entry.departureStopAfternoon || '-' },
+                        { content: entry.arrivalSchoolAfternoon || '-' },
+                        { content: entry.departureSchoolAfternoon || '-' },
+                        { content: entry.arrivalStopAfternoon || '-' }
+                    ];
+                    const afternoonLocationRow = [
+                        { content: `(${entry.departureStopLocationAfternoon || 'Nachmittag'})` },
+                        { content: `(${entry.arrivalSchoolLocationAfternoon || 'N/A'})` },
+                        { content: `(${entry.departureSchoolLocationAfternoon || 'N/A'})` },
+                        { content: `(${entry.arrivalStopLocationAfternoon || 'N/A'})` }
+                    ];
+                    body.push(morningTimeRow);
+                    body.push(morningLocationRow);
+                    body.push(afternoonTimeRow);
+                    body.push(afternoonLocationRow);
+                });
+                
+                (doc as any).autoTable({
+                    head,
+                    body,
+                    startY: tableStartY,
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold', halign: 'center' },
+                    styles: { cellPadding: 2, fontSize: 9, valign: 'middle' },
+                    columnStyles: { 
+                        0: { halign: 'left' },
+                        1: { halign: 'center' },
+                        2: { halign: 'center' },
+                        3: { halign: 'center' },
+                        4: { halign: 'center' },
+                    },
+                    didParseCell: function (data: any) {
+                        if (data.row.section === 'body') {
+                            const isLocationRow = data.row.index % 2 !== 0;
+                            if (isLocationRow) {
+                                 data.cell.styles.textColor = [100, 116, 139];
+                                 data.cell.styles.fontSize = 8;
+                            } else {
+                                 data.cell.styles.fontStyle = 'bold';
+                            }
+                        }
+                    },
+                });
+            } else { // 'group'
+                const head = [['Tag', 'Hinfahrt', 'Rückfahrt']];
+                const body = formData.schedule.map(entry => {
+                    const hinfahrtAbfahrt = `${entry.departureStopMorning || '--:--'} (${entry.departureStopLocationMorning || 'N/A'})`;
+                    const hinfahrtAnkunft = `${entry.arrivalSchoolMorning || '--:--'} (${entry.arrivalSchoolLocationMorning || 'N/A'})`;
+                    const hinfahrtText = `Abfahrt: ${hinfahrtAbfahrt}\nAnkunft: ${hinfahrtAnkunft}`;
+
+                    const rueckfahrtAbfahrt = `${entry.departureSchoolMorning || '--:--'} (${entry.departureSchoolLocationMorning || 'N/A'})`;
+                    const rueckfahrtAnkunft = `${entry.arrivalStopMorning || '--:--'} (${entry.arrivalStopLocationMorning || 'N/A'})`;
+                    const rueckfahrtText = `Abfahrt: ${rueckfahrtAbfahrt}\nAnkunft: ${rueckfahrtAnkunft}`;
+                    
+                    return [entry.day, hinfahrtText.trim(), rueckfahrtText.trim()];
+                });
+                
+                (doc as any).autoTable({
+                    head,
+                    body,
+                    startY: tableStartY,
+                    theme: 'striped',
+                    headStyles: { fillColor: [30, 58, 138], textColor: 255, fontStyle: 'bold' },
+                    styles: { cellPadding: 2, fontSize: 9, valign: 'middle', halign: 'left' },
+                    columnStyles: { 
+                        0: { fontStyle: 'bold', cellWidth: 30 },
+                    },
+                });
+            }
 
             doc.save(fileName);
 
@@ -186,63 +324,198 @@ const TransportationForm: React.FC = () => {
       <datalist id="locations-list">
         {locations.map(loc => <option key={loc} value={loc} />)}
       </datalist>
-      <div className="mb-8 border-b pb-4">
-        <h2 className="text-2xl font-bold">Antrag auf Schülerbeförderung</h2>
+
+      <div className="mb-6 pb-6 border-b">
+        <h2 className="text-xl font-semibold mb-3 text-slate-700">1. Antragsart wählen</h2>
+        <div role="radiogroup" className="flex flex-col sm:flex-row gap-4">
+            <label className="flex items-center p-3 border rounded-md has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-500 cursor-pointer transition-colors w-full">
+                <input
+                    type="radio"
+                    name="requestType"
+                    value="single"
+                    checked={formData.requestType === 'single'}
+                    onChange={handleRequestTypeChange}
+                    className="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+                />
+                <span className="ml-3 text-sm font-medium text-slate-800">Einzelantrag (für einen oder mehrere Schüler)</span>
+            </label>
+            <label className="flex items-center p-3 border rounded-md has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-500 cursor-pointer transition-colors w-full">
+                <input
+                    type="radio"
+                    name="requestType"
+                    value="group"
+                    checked={formData.requestType === 'group'}
+                    onChange={handleRequestTypeChange}
+                    className="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500"
+                />
+                <span className="ml-3 text-sm font-medium text-slate-800">Gruppenantrag (z.B. für eine Klasse)</span>
+            </label>
+        </div>
       </div>
 
-      <section className="mb-8">
-        <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">Angaben zum Schüler / zur Schülerin</h3>
-        <div className="space-y-4">
-            {formData.students.map((student) => (
-              <div key={student.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-x-6 gap-y-2 items-end">
-                <div>
-                  <label htmlFor={`firstName-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Vorname</label>
-                  <input
-                    type="text"
-                    id={`firstName-${student.id}`}
-                    name="firstName"
-                    value={student.firstName}
-                    onChange={(e) => handleStudentChange(student.id, e)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    placeholder="Max"
-                  />
-                </div>
-                <div>
-                  <label htmlFor={`lastName-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Name</label>
-                  <input
-                    type="text"
-                    id={`lastName-${student.id}`}
-                    name="lastName"
-                    value={student.lastName}
-                    onChange={(e) => handleStudentChange(student.id, e)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                    placeholder="Mustermann"
-                  />
-                </div>
-                <button
+      {formData.requestType === 'single' ? (
+        <section className="mb-8">
+            <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">2. Angaben zum Schüler / zur Schülerin</h3>
+            <div className="space-y-4">
+                {formData.students.map((student) => (
+                  <div key={student.id} className="p-4 border rounded-md relative bg-slate-50/50 transition-shadow hover:shadow-sm">
+                    <div className="absolute top-3 right-3">
+                      <button
+                          type="button"
+                          onClick={() => handleRemoveStudent(student.id)}
+                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-100 rounded-full transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                          aria-label="Schüler entfernen"
+                          disabled={formData.students.length <= 1}
+                      >
+                          <TrashIcon />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label htmlFor={`firstName-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Vorname</label>
+                        <input
+                          type="text"
+                          id={`firstName-${student.id}`}
+                          name="firstName"
+                          value={student.firstName}
+                          onChange={(e) => handleStudentChange(student.id, e)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          placeholder="Max"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor={`lastName-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Name</label>
+                        <input
+                          type="text"
+                          id={`lastName-${student.id}`}
+                          name="lastName"
+                          value={student.lastName}
+                          onChange={(e) => handleStudentChange(student.id, e)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          placeholder="Mustermann"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr] gap-4">
+                      <div>
+                        <label htmlFor={`street-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Strasse und Hausnummer</label>
+                        <input
+                          type="text"
+                          id={`street-${student.id}`}
+                          name="street"
+                          value={student.street}
+                          onChange={(e) => handleStudentChange(student.id, e)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          placeholder="Musterstrasse 123"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor={`zipCode-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">PLZ</label>
+                        <input
+                          type="text"
+                          id={`zipCode-${student.id}`}
+                          name="zipCode"
+                          value={student.zipCode}
+                          onChange={(e) => handleStudentChange(student.id, e)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          placeholder="12345"
+                        />
+                      </div>
+                       <div>
+                        <label htmlFor={`city-${student.id}`} className="block text-sm font-medium text-slate-600 mb-1">Ort</label>
+                        <input
+                          type="text"
+                          id={`city-${student.id}`}
+                          name="city"
+                          value={student.city}
+                          onChange={(e) => handleStudentChange(student.id, e)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                          placeholder="Musterstadt"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                 <button
                     type="button"
-                    onClick={() => handleRemoveStudent(student.id)}
-                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-100 rounded-full transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
-                    aria-label="Schüler entfernen"
-                    disabled={formData.students.length <= 1}
-                >
-                    <TrashIcon />
+                    onClick={handleAddStudent}
+                    className="mt-2 flex items-center justify-center px-3 py-1.5 border border-dashed border-slate-400 text-xs font-medium rounded-md shadow-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                    >
+                    <PlusIcon />
+                    Weiteren Schüler hinzufügen
                 </button>
-              </div>
-            ))}
-             <button
-                type="button"
-                onClick={handleAddStudent}
-                className="mt-2 flex items-center justify-center px-3 py-1.5 border border-dashed border-slate-400 text-xs font-medium rounded-md shadow-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
-                >
-                <PlusIcon />
-                Weiteren Schüler hinzufügen
-            </button>
-        </div>
-      </section>
+            </div>
+        </section>
+      ) : (
+        <section className="mb-8">
+            <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">2. Angaben zur Gruppe</h3>
+            <div className="p-4 border rounded-md bg-slate-50/50 space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Klassenbezeichnung / Gruppenname</label>
+                    <div className="space-y-2">
+                      {formData.groupNames.map((groupName, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={groupName}
+                            onChange={(e) => handleGroupNameChange(index, e.target.value)}
+                            className="w-full md:w-2/3 px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            placeholder="z.B. Klasse 3b, Schwimmgruppe"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGroupName(index)}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-100 rounded-full transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                            aria-label="Klasse entfernen"
+                            disabled={formData.groupNames.length <= 1}
+                          >
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleAddGroupName}
+                        className="mt-2 flex items-center justify-center px-3 py-1.5 border border-dashed border-slate-400 text-xs font-medium rounded-md shadow-sm text-slate-700 bg-slate-50 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                    >
+                        <PlusIcon />
+                        Weitere Klasse hinzufügen
+                    </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="studentCount" className="block text-sm font-medium text-slate-600 mb-1">Anzahl der Schüler</label>
+                    <input
+                      type="number"
+                      id="studentCount"
+                      name="studentCount"
+                      value={formData.studentCount}
+                      onChange={handleGroupDataChange}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      placeholder="z.B. 25"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="responsibleTeacher" className="block text-sm font-medium text-slate-600 mb-1">Verantwortliche Lehrperson</label>
+                    <input
+                      type="text"
+                      id="responsibleTeacher"
+                      name="responsibleTeacher"
+                      value={formData.responsibleTeacher}
+                      onChange={handleGroupDataChange}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                      placeholder="Erika Mustermann"
+                    />
+                  </div>
+                </div>
+            </div>
+        </section>
+      )}
+
 
       <section>
-        <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">Benötigte Fahrzeiten (gemeinsam für alle oben genannten Schüler)</h3>
+        <h3 className="text-xl font-semibold border-b pb-2 mb-4 text-slate-700">3. Benötigte Fahrzeiten</h3>
         <div className="space-y-6">
           {formData.schedule.map((entry, index) => (
             <div key={entry.id} className="p-4 border rounded-md relative bg-slate-50/50">
@@ -272,105 +545,313 @@ const TransportationForm: React.FC = () => {
                         </button>
                     </div>
                 </div>
+                
+                {formData.requestType === 'single' ? (
+                  <div className="space-y-4">
+                    {/* Vormittag */}
+                    <div>
+                      <h4 className="font-semibold text-md text-slate-800 mb-2 border-b border-slate-200 pb-1">Vormittag</h4>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+                        {/* Hinfahrt */}
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt (Hinfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="departureStopMorning"
+                                        value={entry.departureStopMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="departureStopLocationMorning"
+                                        value={entry.departureStopLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Haltestelle"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft (Hinfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="arrivalSchoolMorning"
+                                        value={entry.arrivalSchoolMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="arrivalSchoolLocationMorning"
+                                        value={entry.arrivalSchoolLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Schule"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        {/* Rückfahrt */}
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt (Rückfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="departureSchoolMorning"
+                                        value={entry.departureSchoolMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="departureSchoolLocationMorning"
+                                        value={entry.departureSchoolLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Schule"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft (Rückfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="arrivalStopMorning"
+                                        value={entry.arrivalStopMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="arrivalStopLocationMorning"
+                                        value={entry.arrivalStopLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Haltestelle"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
-                    {/* Hinfahrt */}
-                    <div className="space-y-3">
-                        <h4 className="font-semibold text-slate-600 text-sm">Hinfahrt (zur Schule)</h4>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="time"
-                                    name="departureStop"
-                                    value={entry.departureStop}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                />
-                                <input
-                                    type="text"
-                                    name="departureStopLocation"
-                                    value={entry.departureStopLocation}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    onBlur={handleLocationBlur}
-                                    list="locations-list"
-                                    className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                    placeholder="Ort der Haltestelle"
-                                />
+                    {/* Nachmittag */}
+                    <div>
+                      <h4 className="font-semibold text-md text-slate-800 mb-2 border-b border-slate-200 pb-1">Nachmittag</h4>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+                        {/* Hinfahrt */}
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt (Hinfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="departureStopAfternoon"
+                                        value={entry.departureStopAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="departureStopLocationAfternoon"
+                                        value={entry.departureStopLocationAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Haltestelle"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft (Hinfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="arrivalSchoolAfternoon"
+                                        value={entry.arrivalSchoolAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="arrivalSchoolLocationAfternoon"
+                                        value={entry.arrivalSchoolLocationAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Schule"
+                                    />
+                                </div>
                             </div>
                         </div>
-                         <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="time"
-                                    name="arrivalSchool"
-                                    value={entry.arrivalSchool}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                />
-                                <input
-                                    type="text"
-                                    name="arrivalSchoolLocation"
-                                    value={entry.arrivalSchoolLocation}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    onBlur={handleLocationBlur}
-                                    list="locations-list"
-                                    className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                    placeholder="Ort der Schule"
-                                />
+                        {/* Rückfahrt */}
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt (Rückfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="departureSchoolAfternoon"
+                                        value={entry.departureSchoolAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="departureSchoolLocationAfternoon"
+                                        value={entry.departureSchoolLocationAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Schule"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft (Rückfahrt)</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="arrivalStopAfternoon"
+                                        value={entry.arrivalStopAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="arrivalStopLocationAfternoon"
+                                        value={entry.arrivalStopLocationAfternoon}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ort der Haltestelle"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+                    <div className="space-y-4">
+                        <h4 className="font-semibold text-md text-slate-800">Hinfahrt</h4>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="departureStopMorning"
+                                        value={entry.departureStopMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="departureStopLocationMorning"
+                                        value={entry.departureStopLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Abfahrtsort"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="arrivalSchoolMorning"
+                                        value={entry.arrivalSchoolMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="arrivalSchoolLocationMorning"
+                                        value={entry.arrivalSchoolLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ankunftsort"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
-                    {/* Rückfahrt */}
-                    <div className="space-y-3">
-                         <h4 className="font-semibold text-slate-600 text-sm">Rückfahrt (nach Hause)</h4>
-                        <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="time"
-                                    name="departureSchool"
-                                    value={entry.departureSchool}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                />
-                                <input
-                                    type="text"
-                                    name="departureSchoolLocation"
-                                    value={entry.departureSchoolLocation}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    onBlur={handleLocationBlur}
-                                    list="locations-list"
-                                    className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                    placeholder="Ort der Schule"
-                                />
+                    <div className="space-y-4">
+                        <h4 className="font-semibold text-md text-slate-800">Rückfahrt</h4>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Abfahrt</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="departureSchoolMorning"
+                                        value={entry.departureSchoolMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="departureSchoolLocationMorning"
+                                        value={entry.departureSchoolLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Abfahrtsort"
+                                    />
+                                </div>
                             </div>
-                        </div>
-                         <div>
-                            <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="time"
-                                    name="arrivalStop"
-                                    value={entry.arrivalStop}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                />
-                                <input
-                                    type="text"
-                                    name="arrivalStopLocation"
-                                    value={entry.arrivalStopLocation}
-                                    onChange={(e) => handleScheduleChange(index, e)}
-                                    onBlur={handleLocationBlur}
-                                    list="locations-list"
-                                    className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
-                                    placeholder="Ort der Haltestelle"
-                                />
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Ankunft</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="time"
+                                        name="arrivalStopMorning"
+                                        value={entry.arrivalStopMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        className="w-1/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                    />
+                                    <input
+                                        type="text"
+                                        name="arrivalStopLocationMorning"
+                                        value={entry.arrivalStopLocationMorning}
+                                        onChange={(e) => handleScheduleChange(index, e)}
+                                        onBlur={handleLocationBlur}
+                                        list="locations-list"
+                                        className="w-2/3 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                                        placeholder="Ankunftsort"
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                  </div>
+                )}
             </div>
           ))}
         </div>
